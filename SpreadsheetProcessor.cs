@@ -3,7 +3,6 @@ using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
 using System;
 using System.Collections.Generic;
-using System.Drawing;
 using System.IO;
 using System.Linq;
 
@@ -13,6 +12,10 @@ namespace ProcedureStat
     {
         private readonly string _inputFilePath;
         private readonly string _outputFilePath;
+
+        private const string RedColor = "FD7B7C";
+        private const string GreenColor = "57A639";
+        private const string YellowColor = "FDE910";
 
         public SpreadsheetProcessor(string inputFilePath, string outputFilePath)
         {
@@ -35,9 +38,22 @@ namespace ProcedureStat
 
                 AddColumnsToHeader(headerRow, columns, headerStyleIndex, spreadsheetDocument, 25);
 
+                var stylesheet = spreadsheetDocument.WorkbookPart.WorkbookStylesPart.Stylesheet;
+
+                uint redFill = CreateFillStyle(stylesheet, hexColor: RedColor);
+                uint greenFill = CreateFillStyle(stylesheet, hexColor: GreenColor);
+                uint yellowFill = CreateFillStyle(stylesheet, hexColor: YellowColor);
+
+                var styles = new List<uint>()
+                {
+                    redFill,
+                    greenFill,
+                    yellowFill,
+                };
+
                 foreach (var row in sheetData.Elements<Row>().Skip(1))
                 {
-                    AddValuesToRow(row, objectNameColumnIndex, details, spreadsheetDocument);
+                    AddValuesToRow(row, objectNameColumnIndex, details, spreadsheetDocument, styles);
                 }
 
                 SpreadsheetUtil.GetWorksheetPart(spreadsheetDocument).Worksheet.Save();
@@ -109,47 +125,49 @@ namespace ProcedureStat
             worksheetPart.Worksheet.Save();
         }
 
-        private static void AddValuesToRow(Row row, int keyColumnIndex, Dictionary<string, List<string>> details, SpreadsheetDocument spreadsheetDocument)
+        private static void AddValuesToRow(Row row, int keyColumnIndex, Dictionary<string, List<string>> details, SpreadsheetDocument spreadsheetDocument, List<uint> styles)
         {
             var key = SpreadsheetUtil.GetCellValue(spreadsheetDocument,
                 row.Elements<Cell>().ElementAt(keyColumnIndex));
 
-            var stylesheet = spreadsheetDocument.WorkbookPart.WorkbookStylesPart.Stylesheet;
-
-            uint redColorStyleIndex = CreateFillStyle(stylesheet, "fd7b7c");
-            uint greenColorStyleIndex = CreateFillStyle(stylesheet, "57A639");
-            uint yellowColorStyleIndex = CreateFillStyle(stylesheet, "fde910");
+            var rowIndex = row.RowIndex.Value;
+            int columnIndex = row.Elements<Cell>().Count();
 
             if (details.ContainsKey(key))
             {
                 List<string> values = details[key];
-                int columnIndex = row.Elements<Cell>().Count();
 
                 foreach (var value in values)
                 {
                     var columnName = SpreadsheetUtil.ColumnIndexToName(columnIndex);
-                    var rowIndex = row.RowIndex.Value;
+                    var cell = SpreadsheetUtil.CreateCell(columnName, rowIndex, text: value);
 
-                    Cell cell = SpreadsheetUtil.CreateCell(columnName, rowIndex, value);
-
-                    if (value == "Есть ошибки")
+                    if (value.StartsWith("Есть ошибки") || value == "-")
                     {
-                        cell.StyleIndex = redColorStyleIndex;
+                        cell.StyleIndex = styles[0];
                     }
 
                     if (value == "Да")
                     {
-                        cell.StyleIndex = greenColorStyleIndex;
+                        cell.StyleIndex = styles[1];
                     }
 
                     if (value.StartsWith("(Обратить внимание)"))
                     {
-                        cell.StyleIndex = yellowColorStyleIndex;
+                        cell.StyleIndex = styles[2];
                     }
 
                     row.AppendChild(cell);
                     columnIndex++;
                 }
+            }
+            else if (key.StartsWith(Constant.SchemeName))
+            {
+                var columnName = SpreadsheetUtil.ColumnIndexToName(columnIndex);
+                var cell = SpreadsheetUtil.CreateCell(columnName, rowIndex, text: "Объект не найден");
+                cell.StyleIndex = styles[0];
+
+                row.AppendChild(cell);
             }
         }
 

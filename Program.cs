@@ -13,6 +13,9 @@ namespace ProcedureStat
             "Кол-во процедур",
             "Мин. сложность",
             "Макс. сложность",
+            "Insert",
+            "Update",
+            "Delete"
         };
 
         private static void Main(string[] args)
@@ -30,15 +33,27 @@ namespace ProcedureStat
                 .GroupBy(row => row.Field<string>(Constant.ObjectKey))
                 .ToDictionary(
                     group => group.Key,
-                    group => new List<string>
+                    group => 
                     {
-                        RequiresConversion(group) ? "Нет" : "Да",
-                        CanConvert(group) ? "Да" : "Есть ошибки",
-                        group.First()[Constant.ObjectFamilyCount].ToString() == "3" ? "3" 
-                            : $"(Обратить внимание) {group.First()[Constant.ObjectFamilyCount].ToString()}",
+                        var errorOperations = new List<string>
+                        {
+                            CheckComplexityLevel(group, "insert"),
+                            CheckComplexityLevel(group, "update"),
+                            CheckComplexityLevel(group, "delete")
+                        }.Where(op => op != null).ToList();
 
-                        group.First()[Constant.ObjectFamilyMinComplexity].ToString(),
-                        group.First()[Constant.ObjectFamilyMaxComplexity].ToString()
+                        return new List<string>
+                        {
+                            RequiresConversion(group) ? "Нет" : "Да",
+                            errorOperations.Count == 0 ? "Да" : $"Есть ошибки ({string.Join(", ", errorOperations)})",
+                            group.First()[Constant.ObjectFamilyCount].ToString() == "3" ? "3"
+                                : $"(Обратить внимание) {group.First()[Constant.ObjectFamilyCount]}",
+                            group.First()[Constant.ObjectFamilyMinComplexity].ToString(),
+                            group.First()[Constant.ObjectFamilyMaxComplexity].ToString(),
+                            CheckDbOperation(group, "insert"),
+                            CheckDbOperation(group, "update"),
+                            CheckDbOperation(group, "delete")
+                        };
                     }
                 );
 
@@ -46,11 +61,20 @@ namespace ProcedureStat
             spreadsheetProcessor.ProcessDocument(procedureDetails, _columns);
         }
 
+        private static string CheckDbOperation(IEnumerable<DataRow> group, string operation) 
+            => group.Any(row => row[Constant.DbKey].ToString().Contains(operation)) ? "+" : "-";
+
         private static bool RequiresConversion(IGrouping<string, DataRow> group) 
             => group.All(row => row.Field<string>(Constant.ObjectFamilyMaxComplexity) == "1");
         
         private static bool CanConvert(IGrouping<string, DataRow> group) 
             => group.All(row => !row.Field<string>(Constant.ObjectFamilyMinComplexity).StartsWith("-") && 
             !row.Field<string>(Constant.ObjectFamilyMaxComplexity).StartsWith("-"));
+
+        private static string CheckComplexityLevel(IEnumerable<DataRow> group, string operation)
+        {
+            return group.Any(row => row[Constant.DbKey].ToString().Contains(operation) &&
+                                    row.Field<string>(Constant.Complexity).StartsWith("-")) ? operation : null;
+        }
     }
 }

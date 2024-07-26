@@ -1,5 +1,6 @@
 ﻿using DocumentFormat.OpenXml.Packaging;
 using DocumentFormat.OpenXml.Spreadsheet;
+using System;
 using System.Linq;
 
 namespace ProcedureStat
@@ -23,11 +24,17 @@ namespace ProcedureStat
             return worksheetPart;
         }
 
-        public static string GetCellValue(SpreadsheetDocument spreadsheetDocument, Cell cell) 
+        public static string GetCellValue(SpreadsheetDocument spreadsheetDocument, Cell cell)
         {
-            if (cell is null)
+            if (cell == null)
             {
                 return string.Empty;
+            }
+
+            if (spreadsheetDocument == null || spreadsheetDocument.WorkbookPart == null ||
+                spreadsheetDocument.WorkbookPart.SharedStringTablePart == null)
+            {
+                throw new ArgumentNullException();
             }
 
             var value = cell.InnerText;
@@ -36,9 +43,16 @@ namespace ProcedureStat
                 .SharedStringTablePart
                 .SharedStringTable;
 
-            if (cell.DataType.Value == CellValues.SharedString) 
+            if (cell.DataType != null && cell.DataType.Value == CellValues.SharedString)
             {
-                value = sharedStringTable.ElementAt(int.Parse(value)).InnerText;
+                if (int.TryParse(value, out int index) && index >= 0 && index < sharedStringTable.Count())
+                {
+                    value = sharedStringTable.ElementAt(index).InnerText;
+                }
+                else
+                {
+                    throw new ArgumentOutOfRangeException();
+                }
             }
 
             return value;
